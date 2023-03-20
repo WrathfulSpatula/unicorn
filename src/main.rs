@@ -18,13 +18,15 @@ use crate::unicorn::solver::*;
 use crate::unicorn::unroller::{prune_model, renumber_model, unroll_model};
 use crate::unicorn::write_model;
 
-use self::unicorn::quarc::QuantumCircuit;
+use self::unicorn::quarc::{QuantumCircuit, Unitary};
 use ::unicorn::disassemble::disassemble;
 use ::unicorn::emulate::EmulatorState;
 use anyhow::{Context, Result};
 use bytesize::ByteSize;
 use cli::{collect_arg_values, expect_arg, expect_optional_arg, LogLevel, SmtType};
 use env_logger::{Env, TimestampPrecision};
+use std::collections::HashMap;
+use qook::qrack_simulator::QrackSimulator;
 use riscu::load_object_file;
 use std::{
     env,
@@ -197,73 +199,120 @@ fn main() -> Result<()> {
                 let m = model.unwrap();
                 let with_grover = args.contains_id("with-grover");
                 println!("with grover {}", with_grover);
-                let mut qc = QuantumCircuit::new(&m, 64, with_grover); // 64 is a paramater describing wordsize
+                let mut qc = QuantumCircuit::new(&m, 64); // 64 is a paramater describing wordsize
                                                           // TODO: make wordsize parameter customizable from command line
                 let _ = qc.process_model(1);
 
                 if with_grover {
+                    let qsim = QrackSimulator::new(0).unwrap();
+
+                    let mut all_qubit_ids = HashMap::new();
                     for qubit in qc.all_qubits.iter() {
-                        qrack.allocate(qubit);    
+                        qsim.allocate_qubit(all_qubit_ids.len() as u64).unwrap();
+                        all_qubit_ids.insert(qubit, all_qubit_ids.len() as u64);
                     }
 
                     // prepare with hadamard gates input qubits
+                    let mut oracle_input = Vec::new();
                     for (_, input_register) in qc.input_qubits.iter() {
                         for qubit in input_register {
-                            qrack.hadamard(qubit);
+                            oracle_input.push(all_qubit_ids[qubit]);
+                            qsim.h(all_qubit_ids[qubit]).unwrap();
                         }
                     }
+                    let mut diffusion_controls = oracle_input.to_vec();
+                    let diffusion_target = diffusion_controls.pop();
+
+                    // exact formula for optimal iteration count when exactly 1 match exists
+                    let optimal_iter_count = (std::f64::consts::PI / (4.0 * (1.0 / f64::sqrt((1 << oracle_input.len()) as f64)).asin())) as u64;
 
                     // prepare with hadamard gates coefficients and remainders of div. and rem
                     for (_, register) in qc.dependencies.iter() {
                         for qubit in register.iter(){
-                            qrack.hadamard(qubit);
+                            qsim.h(all_qubit_ids[qubit]).unwrap();
                         }
                     }
 
-                    if let Some(oracle_qubit) = qc.output_oracle {
-                        // its definitively not None
-                        qrack.not(oracle_qubit);
-                        qrack.hadamard(oracle_qubit);
-                        for i in 0..(sqrt(2^n)) {
-                            // apply circuit stack
-                            for gate in circuit_stack.iter() {
-                                match &*gate.borrow() {
-                                    Unitary::Not { input } => {
-                                        Qrack.not(input);
-                                    },
-                                    Unitary::Cnot { control, target } => {
-                                        Qrack.cnot(control, target);
-                                    },
-                                    Unitary::Mcx {
-                                        controls:,
-                                        target,
-                                    } => {
-                                        Qrack.cnot(controls, target);
-                                    },
-                                    Unitary::Barrier => None,
-                                }
-                                qrack.apply_gate(gate);
-                            }
-
-                            // phase flip
-                            qrack.hadamard(oracle_qubit);
-
-                            // uncompute
-                            for gate in circuit_stack.iter().rev() {
-                                qrack.apply_gate(gate);
-                            }
-                        }
-
-                        for (_, input_register) in qc.input_qubits.iter() {
-                            for qubit in input_register {
-                                qrack.measure(qubit);
-                            }
-                        }
-                    } else{
+                    if let None = qc.output_oracle {
                         panic!("oracle has a constant value, no problem to solve!");
                     }
-                    
-                    
+
+                    let oracle_qubit = qc.output_oracle;
+                    // prepare oracle in |-> state
+                    qsim.x(all_qubit_ids[oracle_qubit]).unwrap();
+                    qsim.h(all_qubit_ids[oracle_qubit]).unwrap();
+
+                    for i in 0..optimal_iter_count {
+                        // compute oracle
+                        for gate in qc.circuit_stack.iter() {
+                            match &*gate.borrow() {
+                                Unitary::Not { input } => {
+                                    qsim.x(all_qubit_ids[input]).unwrap();
+                                },
+                                Unitary::Cnot { control, target } => {
+                                    qsim.mcx(vec![all_qubit_ids[control]], all_qubit_ids[target]).unwrap();
+                                },
+                                Unitary::Mcx {
+                                    controls,
+                                    target,
+                                } => {
+                                    let mut c_ids = Vec::new();
+                                    for control in controls {
+                                        c_ids.push(all_qubit_ids[control])
+                                    }
+                                    qsim.mcx(c_ids, all_qubit_ids[target]).unwrap();
+                                },
+                                Unitary::Barrier => (),
+                            }
+                        }
+
+                        // oracle output
+                        qsim.macx(oracle_input, all_qubit_ids[oracle_qubit]).unwrap();
+
+                        // uncompute oracle
+                        for gate in qc.circuit_stack.iter().rev() {
+                            match &*gate.borrow() {
+                                Unitary::Not { input } => {
+                                    qsim.x(all_qubit_ids[input]).unwrap();
+                                },
+                                Unitary::Cnot { control, target } => {
+                                    qsim.mcx(vec![all_qubit_ids[control]], all_qubit_ids[target]).unwrap();
+                                },
+                                Unitary::Mcx {
+                                    controls,
+                                    target,
+                                } => {
+                                    let mut c_ids = Vec::new();
+                                    for control in controls {
+                                        c_ids.push(all_qubit_ids[control])
+                                    }
+                                    qsim.mcx(c_ids, all_qubit_ids[target]).unwrap();
+                                },
+                                Unitary::Barrier => (),
+                            }
+                        }
+
+                        // uncompute input preparation
+                        for qubit in oracle_input {
+                            qsim.h(all_qubit_ids[qubit]).unwrap();
+                        }
+                        
+                        // apply diffusion operator
+                        qsim.macz(diffusion_controls, all_qubit_ids[diffusion_target]).unwrap();
+                        
+                        // "re-compute" input preparation
+                        for qubit in oracle_input {
+                            qsim.h(all_qubit_ids[qubit]).unwrap();
+                        }
+                    }
+
+                    // measured qubits are returned corresponding to the order of "all_qubits"
+                    let mut result = 0;
+                    for qubit in oracle_input {
+                        if qsim.m(all_qubit_ids[qubit]).unwrap() > 0 {
+                            result |= 1 << all_qubit_ids[qubit];
+                        }
+                    }
                 }
                 if has_concrete_inputs {
                     let inputs = expect_optional_arg::<String>(args, "inputs")?;

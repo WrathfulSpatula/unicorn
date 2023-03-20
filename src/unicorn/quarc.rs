@@ -355,7 +355,6 @@ pub struct QuantumCircuit<'a> {
     pub result_ored_bad_states: QubitRef,
     pub dynamic_memory: Vec<QubitRef>,
     pub output_oracle: Option<QubitRef>,
-    with_grover: bool,
     clean_ancillas: HashSet<HashableQubitRef>,
     used_ancillas: HashSet<HashableQubitRef>,
     // pub temp: Vec<QubitRef>,
@@ -364,7 +363,7 @@ pub struct QuantumCircuit<'a> {
 }
 
 impl<'a> QuantumCircuit<'a> {
-    pub fn new(model_: &'a Model, word_size_: usize, with_grover: bool) -> Self {
+    pub fn new(model_: &'a Model, word_size_: usize) -> Self {
         Self {
             bad_state_qubits: Vec::new(),
             bad_state_nodes: Vec::new(),
@@ -389,7 +388,6 @@ impl<'a> QuantumCircuit<'a> {
                 dependency: None,
                 stack: VecDeque::new(),
             }),
-            with_grover: with_grover,
             output_oracle: None,
         }
     }
@@ -2417,7 +2415,7 @@ mod tests {
         // assert!(model.bad_states_initial.len() == 1);
         assert!(model.sequentials.is_empty());
 
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
 
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 2);
@@ -2433,7 +2431,7 @@ mod tests {
         let model = parse_btor2_file(Path::new("examples/quarc/eq8.btor2"));
         // // assert!(model.bad_states_initial.len() == 1);
         assert!(model.sequentials.is_empty());
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 2);
 
@@ -2453,7 +2451,7 @@ mod tests {
         let model = parse_btor2_file(Path::new("examples/quarc/eq82.btor2"));
         // // assert!(model.bad_states_initial.len() == 1);
         assert!(model.sequentials.is_empty());
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 1);
 
@@ -2471,7 +2469,7 @@ mod tests {
         let model = parse_btor2_file(Path::new("examples/quarc/ult2.btor2"));
         // assert!(model.bad_states_initial.len() == 1);
         assert!(model.sequentials.is_empty());
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 1);
 
@@ -2489,7 +2487,7 @@ mod tests {
         let model = parse_btor2_file(Path::new("examples/quarc/add.btor2"));
         // assert!(model.bad_states_initial.len() == 1);
         assert!(model.sequentials.len() == 1);
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 2);
 
@@ -2512,7 +2510,7 @@ mod tests {
         let model = parse_btor2_file(Path::new("examples/quarc/add2.btor2"));
         // // assert!(model.bad_states_initial.len() == 1);
         assert!(model.sequentials.len() == 1);
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 1);
 
@@ -2532,7 +2530,7 @@ mod tests {
     fn sub2_test() {
         let model = parse_btor2_file(Path::new("examples/quarc/sub2.btor2"));
         assert!(model.sequentials.len() == 1);
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 1);
 
@@ -2554,7 +2552,7 @@ mod tests {
         let model = parse_btor2_file(Path::new("examples/quarc/and.btor2"));
         // assert!(model.bad_states_initial.len() == 1);
         assert!(model.sequentials.len() == 1);
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 2);
 
@@ -2576,7 +2574,7 @@ mod tests {
         let model = parse_btor2_file(Path::new("examples/quarc/and2.btor2"));
         // assert!(model.bad_states_initial.len() == 1);
         assert!(model.sequentials.len() == 1);
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 1);
 
@@ -2595,7 +2593,7 @@ mod tests {
     #[test]
     fn twos_complement_test() {
         let model = parse_btor2_file(Path::new("examples/quarc/sub.btor2"));
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
 
         let mut assignments: HashMap<HashableQubitRef, bool> = HashMap::new();
         let mut const_qubitset: Vec<QubitRef> = vec![];
@@ -2623,7 +2621,7 @@ mod tests {
     #[test]
     fn test_const_add() {
         let model = parse_btor2_file(Path::new("examples/quarc/add.btor2"));
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let mut gates_to_uncompute = Vec::new();
         let wordsize = 9;
         for i in 1..256 {
@@ -2656,7 +2654,7 @@ mod tests {
     #[test]
     fn test_const_sub() {
         let model = parse_btor2_file(Path::new("examples/quarc/sub.btor2"));
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
 
         let wordsize = 9;
         for i in 0..256 {
@@ -2693,7 +2691,7 @@ mod tests {
         let model = parse_btor2_file(Path::new("examples/quarc/sub.btor2"));
         // assert!(model.bad_states_initial.len() == 1);
         assert!(model.sequentials.len() == 1);
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 2);
 
@@ -2714,7 +2712,7 @@ mod tests {
     #[test]
     fn test_const_ult() {
         let model = parse_btor2_file(Path::new("examples/quarc/add.btor2"));
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
 
         let wordsize = 8;
         let mut gates_to_uncompute = Vec::new();
@@ -2750,7 +2748,7 @@ mod tests {
         let model = parse_btor2_file(Path::new("examples/quarc/ult.btor2"));
         // assert!(model.bad_states_initial.len() == 1);
         assert!(model.sequentials.is_empty());
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 2);
         for i in 0..256 {
@@ -2770,7 +2768,7 @@ mod tests {
     fn ite_test() {
         let model = parse_btor2_file(Path::new("examples/quarc/ite.btor2"));
         // assert!(model.bad_states_initial.len() == 1);
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 3);
         for cond in 0..2 {
@@ -2793,7 +2791,7 @@ mod tests {
     fn ite2_test() {
         let model = parse_btor2_file(Path::new("examples/quarc/ite2.btor2"));
         // assert!(model.bad_states_initial.len() == 1);
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 2);
         for cond in 0..2 {
@@ -2814,7 +2812,7 @@ mod tests {
         let model = parse_btor2_file(Path::new("examples/quarc/not.btor2"));
         // assert!(model.bad_states_initial.len() == 1);
         assert!(model.sequentials.len() == 1);
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 1);
 
@@ -2835,7 +2833,7 @@ mod tests {
         let model = parse_btor2_file(Path::new("examples/quarc/mul.btor2"));
         // assert!(model.bad_states_initial.len() == 1);
         assert!(model.sequentials.len() == 1);
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 2);
 
@@ -2858,7 +2856,7 @@ mod tests {
         let model = parse_btor2_file(Path::new("examples/quarc/mul2.btor2"));
         // assert!(model.bad_states_initial.len() == 1);
         assert!(model.sequentials.len() == 1);
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 1);
 
@@ -2881,7 +2879,7 @@ mod tests {
         let model = parse_btor2_file(Path::new("examples/quarc/div.btor2"));
         // assert!(model.bad_states_initial.len() == 1);
         assert!(model.sequentials.len() == 1);
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 2);
 
@@ -2913,7 +2911,7 @@ mod tests {
         let model = parse_btor2_file(Path::new("examples/quarc/div2.btor2"));
         // assert!(model.bad_states_initial.len() == 1);
         assert!(model.sequentials.len() == 1);
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 1);
 
@@ -2940,7 +2938,7 @@ mod tests {
         let model = parse_btor2_file(Path::new("examples/quarc/rem.btor2"));
         // assert!(model.bad_states_initial.len() == 1);
         assert!(model.sequentials.len() == 1);
-        let mut qc = QuantumCircuit::new(&model, 64, false);
+        let mut qc = QuantumCircuit::new(&model, 64);
         let _ = qc.process_model(1);
         assert!(qc.input_qubits.len() == 2);
         for i in 0..256 {
@@ -3006,7 +3004,7 @@ mod tests {
             let mut model = generate_model(&program, ByteSize::mib(1).as_u64(), 8, 120, &[])?;
 
             replace_memory(&mut model);
-            let mut qc = QuantumCircuit::new(&model, 64, false);
+            let mut qc = QuantumCircuit::new(&model, 64);
             let _ = qc.process_model(data.0);
             for input_value in 0..256 {
                 println!("input value {}", input_value);
