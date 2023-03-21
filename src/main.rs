@@ -29,6 +29,7 @@ use std::collections::HashMap;
 use qook::qrack_simulator::QrackSimulator;
 use riscu::load_object_file;
 use std::{
+    cell::RefCell,
     env,
     fs::File,
     io::{stdout, Write},
@@ -209,19 +210,19 @@ fn main() -> Result<()> {
                     let mut all_qubit_ids = HashMap::new();
                     for qubit in qc.all_qubits.iter() {
                         qsim.allocate_qubit(all_qubit_ids.len() as u64).unwrap();
-                        all_qubit_ids.insert(qubit, all_qubit_ids.len() as u64);
+                        all_qubit_ids.insert(RefCell::as_ptr(qubit) as u64, all_qubit_ids.len() as u64);
                     }
 
                     // prepare with hadamard gates input qubits
                     let mut oracle_input = Vec::new();
                     for (_, input_register) in qc.input_qubits.iter() {
                         for qubit in input_register {
-                            oracle_input.push(all_qubit_ids[qubit]);
-                            qsim.h(all_qubit_ids[qubit]).unwrap();
+                            oracle_input.push(all_qubit_ids[&(RefCell::as_ptr(qubit) as u64)]);
+                            qsim.h(all_qubit_ids[&(RefCell::as_ptr(qubit) as u64)]).unwrap();
                         }
                     }
                     let mut diffusion_controls = oracle_input.to_vec();
-                    let diffusion_target = diffusion_controls.pop();
+                    let diffusion_target = diffusion_controls.pop().unwrap();
 
                     // exact formula for optimal iteration count when exactly 1 match exists
                     let optimal_iter_count = (std::f64::consts::PI / (4.0 * (1.0 / f64::sqrt((1 << oracle_input.len()) as f64)).asin())) as u64;
@@ -229,7 +230,7 @@ fn main() -> Result<()> {
                     // prepare with hadamard gates coefficients and remainders of div. and rem
                     for (_, register) in qc.dependencies.iter() {
                         for qubit in register.iter(){
-                            qsim.h(all_qubit_ids[qubit]).unwrap();
+                            qsim.h(all_qubit_ids[&(RefCell::as_ptr(qubit) as u64)]).unwrap();
                         }
                     }
 
@@ -237,20 +238,20 @@ fn main() -> Result<()> {
                         panic!("oracle has a constant value, no problem to solve!");
                     }
 
-                    let oracle_qubit = qc.output_oracle;
+                    let oracle_qubit = qc.output_oracle.as_ref().unwrap();
                     // prepare oracle in |-> state
-                    qsim.x(all_qubit_ids[oracle_qubit]).unwrap();
-                    qsim.h(all_qubit_ids[oracle_qubit]).unwrap();
+                    qsim.x(all_qubit_ids[&(RefCell::as_ptr(&oracle_qubit) as u64)]).unwrap();
+                    qsim.h(all_qubit_ids[&(RefCell::as_ptr(&oracle_qubit) as u64)]).unwrap();
 
-                    for i in 0..optimal_iter_count {
+                    for _ in 0..optimal_iter_count {
                         // compute oracle
                         for gate in qc.circuit_stack.iter() {
                             match &*gate.borrow() {
                                 Unitary::Not { input } => {
-                                    qsim.x(all_qubit_ids[input]).unwrap();
+                                    qsim.x(all_qubit_ids[&(RefCell::as_ptr(input) as u64)]).unwrap();
                                 },
                                 Unitary::Cnot { control, target } => {
-                                    qsim.mcx(vec![all_qubit_ids[control]], all_qubit_ids[target]).unwrap();
+                                    qsim.mcx(vec![all_qubit_ids[&(RefCell::as_ptr(control) as u64)]], all_qubit_ids[&(RefCell::as_ptr(target) as u64)]).unwrap();
                                 },
                                 Unitary::Mcx {
                                     controls,
@@ -258,25 +259,25 @@ fn main() -> Result<()> {
                                 } => {
                                     let mut c_ids = Vec::new();
                                     for control in controls {
-                                        c_ids.push(all_qubit_ids[control])
+                                        c_ids.push(all_qubit_ids[&(RefCell::as_ptr(control) as u64)])
                                     }
-                                    qsim.mcx(c_ids, all_qubit_ids[target]).unwrap();
+                                    qsim.mcx(c_ids, all_qubit_ids[&(RefCell::as_ptr(target) as u64)]).unwrap();
                                 },
                                 Unitary::Barrier => (),
                             }
                         }
 
                         // oracle output
-                        qsim.macx(oracle_input, all_qubit_ids[oracle_qubit]).unwrap();
+                        qsim.macx(oracle_input.clone(), all_qubit_ids[&(RefCell::as_ptr(&oracle_qubit) as u64)]).unwrap();
 
                         // uncompute oracle
                         for gate in qc.circuit_stack.iter().rev() {
                             match &*gate.borrow() {
                                 Unitary::Not { input } => {
-                                    qsim.x(all_qubit_ids[input]).unwrap();
+                                    qsim.x(all_qubit_ids[&(RefCell::as_ptr(input) as u64)]).unwrap();
                                 },
                                 Unitary::Cnot { control, target } => {
-                                    qsim.mcx(vec![all_qubit_ids[control]], all_qubit_ids[target]).unwrap();
+                                    qsim.mcx(vec![all_qubit_ids[&(RefCell::as_ptr(control) as u64)]], all_qubit_ids[&(RefCell::as_ptr(target) as u64)]).unwrap();
                                 },
                                 Unitary::Mcx {
                                     controls,
@@ -284,33 +285,33 @@ fn main() -> Result<()> {
                                 } => {
                                     let mut c_ids = Vec::new();
                                     for control in controls {
-                                        c_ids.push(all_qubit_ids[control])
+                                        c_ids.push(all_qubit_ids[&(RefCell::as_ptr(control) as u64)])
                                     }
-                                    qsim.mcx(c_ids, all_qubit_ids[target]).unwrap();
+                                    qsim.mcx(c_ids, all_qubit_ids[&(RefCell::as_ptr(target) as u64)]).unwrap();
                                 },
                                 Unitary::Barrier => (),
                             }
                         }
 
                         // uncompute input preparation
-                        for qubit in oracle_input {
-                            qsim.h(all_qubit_ids[qubit]).unwrap();
+                        for qubit in &oracle_input {
+                            qsim.h(all_qubit_ids[&qubit]).unwrap();
                         }
                         
                         // apply diffusion operator
-                        qsim.macz(diffusion_controls, all_qubit_ids[diffusion_target]).unwrap();
+                        qsim.macz(diffusion_controls.clone(), all_qubit_ids[&diffusion_target]).unwrap();
                         
                         // "re-compute" input preparation
-                        for qubit in oracle_input {
-                            qsim.h(all_qubit_ids[qubit]).unwrap();
+                        for qubit in &oracle_input {
+                            qsim.h(all_qubit_ids[&qubit]).unwrap();
                         }
                     }
 
                     // measured qubits are returned corresponding to the order of "all_qubits"
                     let mut result = 0;
                     for qubit in oracle_input {
-                        if qsim.m(all_qubit_ids[qubit]).unwrap() > 0 {
-                            result |= 1 << all_qubit_ids[qubit];
+                        if qsim.m(all_qubit_ids[&qubit]).unwrap() > 0 {
+                            result |= 1 << all_qubit_ids[&qubit];
                         }
                     }
                 }
